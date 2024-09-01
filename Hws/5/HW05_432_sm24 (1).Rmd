@@ -1,0 +1,273 @@
+---
+title: "Stat 432 HW 05"
+author: "Name: Ahmadreza Eslaminia, netID: Ae15"
+date: 'Summer 2024'
+output:
+  pdf_document
+---
+
+
+Include the R code for this HW. 
+
+
+```{r setup, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ISLR2)
+library(GGally)
+library(tibble)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(caret)
+#add more libraries as needed.
+```
+
+
+
+
+## Question 1 (k-NN, tree for classification)
+
+
+Use ```hw5data1.Rdata``` to answer this question. 
+
+```{r}
+load("hw5data1.Rdata") #put this file in your working directory or in the same folder as your HW Rmd file
+str(circle.trn)#your training data
+str(circle.tst)# your test data
+plot(x.2~x.1,data=circle.trn,col=circle.trn$classes,pch=19) 
+```
+
+* ```classes``` variable: categorical response variable
+* ```x.1```, ```x.2```: feature variables
+```{r}
+circle.trn$classes <- as.factor(circle.trn$classes)
+circle.tst$classes <- as.factor(circle.tst$classes)
+```
+
+(a) The given graphic is the plot of data, using different color for different classes. Based on given information, would decision tree work well? Explain why or why not. 
+
+As the plots shows the two classes are not linearly seperable and would habe complex decision boundries , the decision tree would not be a good choice here and probably would not work well. Decision trees tend to create axis-alignd splits, which might not captur the curved boundary well, This can lead to overfiting with deep trees or underfitting with shallow trees.
+
+
+(b) Conduct k-NN classification using ```train()``` function of ```caret``` package, with 10-fold cross validation. Use the grid of odd numbers, from 1 to 101 for ```k```. Choose best k. (For this problem, do not need to consider scaling.)
+
+```{r}
+set.seed(1)
+knn_grid <- expand.grid(k = seq(1, 101, by = 2))
+knn_model <- train(classes ~ ., data = circle.trn, method = "knn", trControl = trainControl(method = "cv", number = 10), tuneGrid = knn_grid)
+
+# Best k
+best_k <- knn_model$bestTune$k
+print(paste("Best k value:", best_k))
+```
+
+(c) Conduct tree classification using ```rpart()``` function of ```rpart``` package. Use ```cp=0``` to grow a big tree. Then create the cp-table and cp vs size of plot. (By default, this function use 10-fold cross validation. This number can be controlled using ```xval=``` option if necessary. No need to change for this HW.) Based on the result, choose the optimal cp value. 
+```{r}
+library(rpart)
+library(rpart.plot)
+
+#  with cp=0
+tree_model <- rpart(classes ~ ., data = circle.trn, cp = 0)
+
+
+plotcp(tree_model)
+printcp(tree_model)
+
+optimal_cp <- 0.01
+print(paste("Optimal cp value:", optimal_cp))
+
+#  optimal cp 
+pruned_tree <- prune(tree_model, cp = optimal_cp)
+```
+According to the plot we can see that after cp = 0.01 the error doe snot significantly drops so we can chose this number as the complexity param. 
+
+
+(d) Using the models chosen from (b) and (c), refit the models to the whole training data and report test accuracy. Which method is performing better on our test data?
+
+```{r}
+knn_final_model <- train(classes ~ ., data = circle.trn, method = "knn", tuneGrid = data.frame(k = best_k))
+
+# k-NN model
+knn_final_predictions <- predict(knn_final_model, newdata = circle.tst)
+knn_final_confusion <- confusionMatrix(knn_final_predictions, circle.tst$classes)
+knn_final_accuracy <- knn_final_confusion$overall['Accuracy']
+print(paste("k-NN Test Accuracy:", knn_final_accuracy))
+
+# pruned tree
+tree_final_predictions <- predict(pruned_tree, newdata = circle.tst, type = "class")
+tree_final_confusion <- confusionMatrix(tree_final_predictions, circle.tst$classes)
+tree_final_accuracy <- tree_final_confusion$overall['Accuracy']
+print(paste("Decision Tree Test Accuracy:", tree_final_accuracy))
+
+
+```
+
+According to the results the test accuracy for the K-NN model is way better than the Desion tree as we discussed in previous part a.  
+
+\newpage
+
+## Question 2
+
+This question relates to the ```Boston``` data set of ```ISLR2``` package. 
+
+```{r}
+set.seed(42)
+trn.idx=sample(1:nrow(ISLR2::Boston),450)
+tst.boston=ISLR2::Boston[-trn.idx,]
+trn.boston=ISLR2::Boston[trn.idx,]
+```
+
+We are splitting the data into two parts: a testing data that contains 56 observations, and the rest 450 observations as training data. 
+
+
+* The goal is to model ```crim``` (our response variable) with all the other variables in the data.
+* Use ```train``` function of ```caret``` package for this question. 
+
+
+
+(a) Conduct linear regression with 10-fold CV. Report CV error for the chosen parameter.  (RMSE or MSE, either way is ok. Just need to be consistent throughout this problem. )
+In this HW, use:
+
+```
+control=trainControl(method = "cv",number=10)
+
+lm.boston<-train(formula,data=data,
+                 method = 'lm', 
+                 trControl=control
+               ) 
+```
+```{r}
+control <- trainControl(method = "cv", number = 10)
+
+# liner reg
+lm_model <- train(crim ~ ., data = trn.boston, method = "lm", trControl = control)
+
+# RMSE
+lm_cv_error <- lm_model$results$RMSE
+print(paste("Linear Regresion CV RMSE:", lm_cv_error))
+```
+
+(b) Conduct k-NN regression with 10-fold CV. Choose optimal tuning parameter. Report CV error for the chosen parameter. Use train function of caret package.
+
+
+*Consider two different pre-processing setups.*
+
+* Setup 1: Numeric variables not scaled. 
+
+* Setup 2: *Numeric variables are scaled* to have mean 0 and standard deviation 1. You need to add ```preProcess = c("center","scale")``` option inside the train function. 
+
+Which setup and ```k``` gives the lowest error?
+```{r}
+set.seed(42)
+# not scaled
+knn_model_1 <- train(crim ~ ., data = trn.boston, method = "knn", trControl = control, tuneLength = 10)
+best_k_1 <- knn_model_1$bestTune$k
+knn_cv_error_1 <- knn_model_1$results[knn_model_1$results$k == best_k_1, "RMSE"]
+print(paste("k-NN (not scled) Best k:", best_k_1))
+print(paste("k-NN (not scled) CV RMSE:", knn_cv_error_1))
+
+#  scaled
+set.seed(42)
+knn_model_2 <- train(crim ~ ., data = trn.boston, method = "knn", trControl = control, preProcess = c("center", "scale"), tuneLength = 10)
+best_k_2 <- knn_model_2$bestTune$k
+knn_cv_error_2 <- knn_model_2$results[knn_model_2$results$k == best_k_2, "RMSE"]
+print(paste("k-NN (scled) Best k:", best_k_2))
+print(paste("k-NN (scled) CV RMSE:", knn_cv_error_2))
+```
+AS we can see here model considering scaling can enhance the performance a little bit. So the best model is k = 19 with considering scaling. 
+
+
+(c) Conduct ridge regression with 10-fold CV. In this HW, use the ```train()``` function of the ```caret``` package:
+
+```
+control=trainControl(method = "cv",number=10)
+
+lasso<-train(formula,data=data,
+                 method = 'glmnet', 
+                 trControl=control,preProc = c("center","scale"),
+                 tuneGrid = expand.grid(alpha = 1, lambda =seq(from=0,to=1,by=0.01))
+                 #alpha=1 indicates lasso method. You can choose your own grid of lambda. 
+               ) 
+
+ridge<-train(formula,data=data,
+                 method = 'glmnet', 
+                 trControl=control,preProc = c("center","scale"),
+                 tuneGrid = expand.grid(alpha = 0, lambda =seq(from=0,to=1,by=0.01))
+  #alpha=0 indicates ridge regression method. You can choose your own grid of lambda. 
+
+               ) 
+
+```
+```{r}
+#  lasso 
+lasso <- train(crim ~ ., data = trn.boston, method = 'glmnet',
+               trControl = control, preProc = c("center", "scale"),
+               tuneGrid = expand.grid(alpha = 1, lambda = seq(0, 1, by = 0.01)))
+
+# Lsso (RMSE) 
+lasso_cv_error <- min(lasso$results$RMSE)
+best_lasso_lambda <- lasso$bestTune$lambda
+print(paste("Lasso CV RMSE:", lasso_cv_error))
+print(paste("Best lamnda for Lasso:", best_lasso_lambda))
+
+#  ridge 
+ridge <- train(crim ~ ., data = trn.boston, method = 'glmnet',
+               trControl = control, preProc = c("center", "scale"),
+               tuneGrid = expand.grid(alpha = 0, lambda = seq(0, 1, by = 0.01)))
+
+# ridge (RMSE)
+ridge_cv_error <- min(ridge$results$RMSE)
+best_ridge_lambda <- ridge$bestTune$lambda
+print(paste("Ridg Regresion CV RMSE:", ridge_cv_error))
+print(paste("Best lammda for Ridg Regression:", best_ridge_lambda))
+```
+Find best tuning parameter for each lasso and ridge regression, and report CV error. 
+It can be seen that the Ridge outperform the lasso here. As the best labmda are not on the boundries used grid should be fine.
+
+
+(d) Conduct Bagging, Random Forest, and Boosting with 10-fold CV. Use the ```train()``` function of the ```caret``` package. Find best tuning parameter for each methods.
+```{r}
+library(randomForest)
+# Bagging
+bagging <- train(crim ~ ., data = trn.boston, method = 'treebag',
+                 trControl = control)
+bagging_cv_error <- min(bagging$results$RMSE)
+print(paste("Baging CV RMSE:", bagging_cv_error))
+
+# Random Forest
+rf <- train(crim ~ ., data = trn.boston, method = 'rf',
+            trControl = control, tuneLength = 10)
+rf_cv_error <- min(rf$results$RMSE)
+best_rf_mtry <- rf$bestTune$mtry
+print(paste("Random forest CV RMSE:", rf_cv_error))
+print(paste("Best mtry for Random Forest:", best_rf_mtry))
+
+# Boosting
+boosting <- train(crim ~ ., data = trn.boston, method = 'gbm',
+                  trControl = control, tuneLength = 10, verbose = FALSE)
+boosting_cv_error <- min(boosting$results$RMSE)
+best_boosting_n_trees <- boosting$bestTune$n.trees
+best_boosting_interaction_depth <- boosting$bestTune$interaction.depth
+best_boosting_shrinkage <- boosting$bestTune$shrinkage
+best_boosting_n_minobsinnode <- boosting$bestTune$n.minobsinnode
+print(paste("Boosting CV RMSE:", boosting_cv_error))
+print(paste("Best n.tres for Boosting:", best_boosting_n_trees))
+print(paste("Best interction.depth for Boosting:", best_boosting_interaction_depth))
+print(paste("Best shrikage for Boosting:", best_boosting_shrinkage))
+print(paste("Best n.mino for Boosting:", best_boosting_n_minobsinnode))
+```
+
+(e) Based on (a)-(d), pick the best method and train your whole training data set using the chosen method and tuning parameter(s). Report the test MSE. 
+
+According to the results in previous section we can see that the random forest model has the lower error. So we use this model for traing, and testing. 
+```{r}
+best_rf_model <- train(crim ~ ., data = trn.boston, method = 'rf',
+                       trControl = control, tuneGrid = data.frame(mtry = 2))
+
+test_predictions <- predict(best_rf_model, tst.boston)
+
+#(MSE) on the test 
+test_mse <- mean((tst.boston$crim - test_predictions)^2)
+print(paste("Test MSE for best model(random forests):", test_mse))
+```
+

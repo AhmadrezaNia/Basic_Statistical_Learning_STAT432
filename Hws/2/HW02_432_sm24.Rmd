@@ -1,0 +1,594 @@
+---
+title: "Stat 432 HW 02"
+author: "Name: Ahmadreza Eslaminia, netID: ae15"
+date: 'Summer 2024'
+output:
+  pdf_document
+---
+
+
+Include the R code for this HW. 
+
+```{r setup, message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ISLR2)
+library(GGally)
+```
+
+There are some useful R chunk options that you may use (for this entire semester):
+
+* echo - Display code in output document (default = TRUE) 
+* include - Include chunk in document after running (default = TRUE)
+* message - display code messages in document (default = TRUE) 
+* results  (default = 'markup’) 
+  + 'asis’ - passthrough results 
+  + 'hide’ - do not display results 
+  + 'hold’ - put all results below all code
+* error - Display error messages in doc (TRUE) or stop render when errors occur (FALSE) (default = FALSE) 
+
+See R markdown cheat sheet for more information.
+
+\newpage
+## Question 1 (Linear Regression)
+
+We have $N$ observations of $(X_1, X_2, \dots, X_p, Y)$. 
+
+Let us use the following notations:
+
+* $\mathbf{X}$ is a the $N\times (p+1)$ matrix with each row as an input vector (with a 1 in the first position),  
+* $\mathbf{y}$ be the $N$-vector of outputs and 
+* ${\boldsymbol \beta}=\begin{bmatrix}
+\beta_0\\
+\beta_1\\
+\vdots\\
+\beta_p
+\end{bmatrix}$. 
+
+Then we may write the multiple linear regression model as
+
+$$\mathbf{y}=\mathbf{X} {\boldsymbol \beta}+\epsilon.$$
+Show that 
+
+$$\widehat{\boldsymbol \beta} = (\mathbf{X}^\text{T} \mathbf{X})^{-1}\mathbf{X}^\text{T} \mathbf{y}.$$
+minimizes RSS. 
+ 
+ 
+ Answer: 
+for the linear regression model:
+
+\[
+\mathbf{y} = \mathbf{X} \boldsymbol{\beta} + \boldsymbol{\epsilon}
+\]
+
+where:
+- \( \mathbf{X} \) is an \( N \times (p + 1) \) matrix of inputs.
+- \( \mathbf{y} \) is an \( N \)-vector of outputs.
+- \( \boldsymbol{\beta} \) is a \( (p + 1) \)-vector of coefficients.
+
+RSS is defined as:
+
+\[
+RSS = (\mathbf{y} - \mathbf{X} \boldsymbol{\beta})^T (\mathbf{y} - \mathbf{X} \boldsymbol{\beta})
+\]
+
+To minimize the RSS set deravative to beta to zero:
+
+\[
+\frac{\partial RSS}{\partial \boldsymbol{\beta}} = -2 \mathbf{X}^T \mathbf{y} + 2 \mathbf{X}^T \mathbf{X} \boldsymbol{\beta} = 0
+\]
+
+
+\[
+\mathbf{X}^T \mathbf{X} \boldsymbol{\beta} = \mathbf{X}^T \mathbf{y}
+\]
+
+Assuming \( \mathbf{X}^T \mathbf{X} \) is invertible, we find the following as the minimizer:
+
+\[
+\hat{\boldsymbol{\beta}} = (\mathbf{X}^T \mathbf{X})^{-1} \mathbf{X}^T \mathbf{y}
+\]
+
+ 
+\newpage
+
+## Question 2 (Linear Regression)
+
+This question relates to the College data set, which can be found in the file ```College.csv```. It contains a number of variables for 777 different universities and colleges in the US. 
+
+(from the previous HW) Use the ```read.csv()``` function to read the data into R. Call the loaded data ```college```. Make sure that you have the directory set to the correct location for the data. 
+
+Before moving on, we're not going to use the college name, so you may remove ```X``` variable from data.
+
+Also, make sure categorical variables are set as factor variables. 
+
+
+Split your data into two parts: a testing data that contains 100 observations, and the rest as training data. You may use ```sample``` function to get the indices of the testing data. For this question, you need to set a random seed while generating this split so that the result can be replicated. Use ```4322``` as the random seed. Report the mean of ```Outstate``` of your testing data and training data, respectively.
+
+```{r}
+college <- read.csv("College.csv")
+college <- college[ , !(names(college) %in% "X")]
+
+# factorizing the categirical features ( only private) 
+college$Private <- as.factor(college$Private)
+set.seed(4322)
+summary(college)
+# Split 
+test_indices <- sample(1:nrow(college), 100)
+college_test <- college[test_indices, ]
+college_train <- college[-test_indices, ]
+
+# Report the mean 
+mean_test <- mean(college_test$Outstate)
+mean_train <- mean(college_train$Outstate)
+
+mean_test
+mean_train
+```
+
+
+(a) Now, split your training data into two parts: validation data (100 observations), and the rest as estimation data. 
+Use the random seed ```4323```. 
+```{r}
+
+set.seed(4323)
+
+# Split training data 
+validation_indices <- sample(1:nrow(college_train), 100)
+college_validation <- college_train[validation_indices, ]
+college_estimation <- college_train[-validation_indices, ]
+
+```
+
+
+(b) We're interested in predicting ```Enroll```. First, run the linear regression on the estimation data including all variables. What is the feature variable with the highest p-value?
+
+
+```{r}
+# Fit linear model
+fit_all <- lm(Enroll ~ ., data = college_estimation)
+
+summary(fit_all)
+
+highest_p_value <- max(coef(summary(fit_all))[ , "Pr(>|t|)"])
+highest_p_variable <- names(which(coef(summary(fit_all))[ , "Pr(>|t|)"] == highest_p_value))
+
+highest_p_variable
+```
+
+
+(c) Run the regression again, but this time, without that variable (with the highest p-value from previous regression) and find the feature variable with the highest p-value with the highest p-value in the new regression. Repeat this step until all the variables have p-value less than 0.1.
+
+```{r}
+#first we exclude the books and enrolls
+current_variables <- names(college_estimation)
+current_variables <- current_variables[current_variables != "Enroll"] 
+
+current_variables <- setdiff(current_variables, "Books")
+
+str(college$Private)
+
+# Function to fit the model then get the variable with the highest p 
+get_highest_p_value_variable <- function(data, variables) {
+  formula <- as.formula(paste("Enroll ~", paste(variables, collapse = " + ")))
+  fit <- lm(formula, data = data)
+  p_values <- summary(fit)$coefficients[-1, "Pr(>|t|)"] 
+  
+  if (length(p_values) == 0) return(list(variable = NULL, max_p_value = NA, model = fit))
+  
+  max_p_value <- max(p_values)
+  highest_p_variable <- names(which(p_values == max_p_value))
+  
+  # Handle the factor 'Private' correctly, it gives error because of the previous factorizeing function used 
+  if ("PrivateYes" %in% highest_p_variable) {
+    highest_p_variable <- "Private"
+  }
+  
+  return(list(variable = highest_p_variable, max_p_value = max_p_value, model = fit))
+}
+
+max_iterations <- length(current_variables)  
+iterations <- 0
+
+repeat {
+  result <- get_highest_p_value_variable(college_estimation, current_variables)
+  if (is.null(result$variable) || result$max_p_value <= 0.1) {
+    final_model <- result$model
+    break
+  } else {
+    current_variables <- setdiff(current_variables, result$variable)
+    print(paste("Removing variable:", result$variable))  # Debugging print to see progress
+  }
+  
+  iterations <- iterations + 1
+  if (iterations > max_iterations) {
+    print("Reached maximum iterations.")
+    break
+  }
+}
+
+# Summary of the final model
+summary(final_model)
+```
+
+(d) Find validation MSE of all the models in (b) and (c). Report the model with the smallest validation MSE.
+
+
+```{r}
+
+calculate_mse <- function(model, data) {
+  predictions <- predict(model, newdata = data)
+  mse <- mean((data$Enroll - predictions)^2)
+  return(mse)
+}
+
+#  model with all variables
+mse_all <- calculate_mse(fit_all, college_validation)
+
+#  final model from sec c
+mse_final <- calculate_mse(final_model, college_validation)
+
+
+mse_all
+mse_final
+
+best_model <- ifelse(mse_final < mse_all, "Final Model from sec c", " Model with All Variables")
+
+best_model
+
+```
+
+
+(e) Report your test MSE of your chosen model in part (d).
+
+
+```{r}
+
+chosen_model <- if(best_model == "Final Model from sec c") final_model else fit_all
+
+test_mse <- calculate_mse(chosen_model, college_test)
+test_mse
+```
+
+\newpage
+
+## Question 3 (k-NN)
+
+
+This question should be answered using the ```Carseats``` data set form ```ISLR2``` package. 
+
+Make sure all categorical variables are set as factor variables, and omit any missing data. 
+```{r}
+
+data("Carseats")
+
+str(Carseats)
+
+# Convert categirical variables 
+Carseats$ShelveLoc <- as.factor(Carseats$ShelveLoc)
+Carseats$Urban <- as.factor(Carseats$Urban)
+Carseats$US <- as.factor(Carseats$US)
+
+summary(Carseats)
+
+```
+(a) Set 10% of whole data as a test set, and the rest as a training set. Split the training set into validation set (10% of training data) and the rest of the training set as a estimation set. Use the random seed ```4324```.
+
+```{r}
+set.seed(4324)
+
+# Split data
+n <- nrow(Carseats)
+test_indices <- sample(1:n, size = round(0.1 * n))
+carseats_test <- Carseats[test_indices, ]
+carseats_train <- Carseats[-test_indices, ]
+
+
+
+train_indices <- sample(1:nrow(carseats_train), size = round(0.9 * nrow(carseats_train)))
+carseats_estimation <- carseats_train[train_indices, ]
+carseats_validation <- carseats_train[-train_indices, ]
+
+# Check the sizee
+cat("Test set size:", nrow(carseats_test), "\n")
+cat("Training set size:", nrow(carseats_train), "\n")
+cat("Estimation set size:", nrow(carseats_estimation), "\n")
+cat("Validation set size:", nrow(carseats_validation), "\n")
+
+```
+
+
+(b) Conduct the EDA on the training set. 
+
+```{r}
+
+ggpairs(carseats_train, columns = c("Sales", "Price", "Advertising", "US"))
+
+summary(carseats_train)
+
+```
+
+(c) We're going to fit linear regression models to predict ```Sales``` using ```Price```, ```US```, and ```Advertising```. 
+
+```{r}
+
+# Define the models 
+models <- list(
+  model1 = Sales ~ Price,
+  model2 = Sales ~ US,
+  model3 = Sales ~ Advertising,
+  model4 = Sales ~ Price + US,
+  model5 = Sales ~ US + Advertising,
+  model6 = Sales ~ Price + Advertising,
+  model7 = Sales ~ Price + US + Advertising,
+  model8 = Sales ~ Price * US + Advertising,
+  model9 = Sales ~ Price * Advertising + US * Advertising
+)
+
+# Fit the models 
+fitted_models <- lapply(models, function(formula) {
+  lm(formula, data = carseats_estimation)
+})
+
+
+lapply(fitted_models, summary)
+
+```
+
+Candidate models:
+
+```
+model 1: Sales~Price
+model 2: Sales~US
+model 3: Sales~Advertising
+model 4: Sales~Price+US
+model 5: Sales~US+Advertising
+model 6: Sales~Price+Advertising
+model 7: Sales~Price+US+Price*US
+model 8: Sales~US+Advertising+US*Advertising
+model 9: Sales~Price+Advertising+Price*Advertising
+```
+Store all regression models in one list.  Run the regressions on the estimation data.
+
+(e) Calculate validation MSE of all models. Choose a single model with the lowest validation MSE. 
+
+```{r}
+
+
+calculate_mse <- function(model, data) {
+  predictions <- predict(model, newdata = data)
+  mse <- mean((data$Sales - predictions)^2)
+  return(mse)
+}
+
+
+validation_mse <- sapply(fitted_models, calculate_mse, data = carseats_validation)
+
+validation_mse
+
+# Identify lowest validation MSE
+best_model_index <- which.min(validation_mse)
+best_model <- fitted_models[[best_model_index]]
+cat("Best model is:", names(models)[best_model_index], "with MSE =", validation_mse[best_model_index], "\n")
+
+```
+
+(f) Report your test MSE. Provide a scatter plot of predicted Sales and observed Sales of the test data.
+
+```{r}
+
+
+test_mse <- calculate_mse(best_model, carseats_test)
+cat("Test MSE for the best model:", test_mse, "\n")
+
+
+test_predictions <- predict(best_model, newdata = carseats_test)
+plot(carseats_test$Sales, test_predictions, 
+     xlab = "Observed Sales", ylab = "Predicted Sales",
+     main = "Predicted vs Observed Sales",
+     col = "blue", pch = 16)
+abline(0, 1, col = "red")
+
+```
+
+\newpage
+
+ 
+## Question 4 (k-NN and decision tree)
+
+This question relates to the ```Boston``` data set of ```ISLR2``` package. 
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+set.seed(432)
+trn.idx=sample(1:nrow(ISLR2::Boston),450)
+tst.boston=ISLR2::Boston[-trn.idx,]
+trn.boston=ISLR2::Boston[trn.idx,]
+```
+
+We are splitting the data into two parts: a testing data that contains 56 observations, and the rest 450 observations as training data. 
+
+
+
+* The goal is to model `medv` (our response variable) with all the other variables in the data. 
+
+
+
+* In this HW, we'll not worry about scaling variables. We'll tackle that in the future. 
+
+
+
+(a) Use the following validation-estimation split. 
+```{r}
+set.seed(1)
+val.idx=sample(1:nrow(trn.boston),45)
+val.boston=trn.boston[val.idx,]
+est.boston=trn.boston[-val.idx,]
+# Check the sizes of the datasets
+cat("Training set size:", nrow(trn.boston), "\n")
+cat("Estimation set size:", nrow(est.boston), "\n")
+cat("Validation set size:", nrow(val.boston), "\n")
+cat("Test set size:", nrow(tst.boston), "\n")
+```
+
+* Use the estimation data and ```knnreg``` function of ```caret``` package to perform KNN. 
+* Train KNN models using values of ```k``` from 1 to 100 and calculate validation MSE for each ```k```. 
+* Plot the validation MSE versus ```k``` and show them in the same graph. 
+```{r}
+
+
+train_x <- est.boston[, -which(names(est.boston) == "medv")]
+train_y <- est.boston$medv
+val_x <- val.boston[, -which(names(val.boston) == "medv")]
+val_y <- val.boston$medv
+
+# Initialize
+k_values <- 1:100
+validation_mse <- numeric(length(k_values))
+
+for (k in k_values) {
+  knn_model <- knnreg(train_x, train_y, k = k)
+  val_predictions <- predict(knn_model, val_x)
+  validation_mse[k] <- mean((val_y - val_predictions)^2)
+}
+
+# Plot 
+plot(k_values, validation_mse, type = "b", col = "blue", pch = 19,
+     xlab = "Number of Neighbors (k)", ylab = "Validation MSE",
+     main = "Validation MSE vs. Number of Neighbors (k)")
+
+```
+
+(b) Repeat (a) with different random seeds, (2,3), and see if your answer changes. If so, why does it change?
+```{r}
+
+knn_analysis_with_seed <- function(seed) {
+  set.seed(seed)
+  val.idx <- sample(1:nrow(trn.boston), 45)
+  val.boston <- trn.boston[val.idx, ]
+  est.boston <- trn.boston[-val.idx, ]
+  
+  train_x <- est.boston[, -which(names(est.boston) == "medv")]
+  train_y <- est.boston$medv
+  val_x <- val.boston[, -which(names(val.boston) == "medv")]
+  val_y <- val.boston$medv
+  
+  validation_mse <- numeric(length(k_values))
+  
+  for (k in k_values) {
+    knn_model <- knnreg(train_x, train_y, k = k)
+    val_predictions <- predict(knn_model, val_x)
+    validation_mse[k] <- mean((val_y - val_predictions)^2)
+  }
+  
+  return(validation_mse)
+}
+#for other seeds 
+seeds <- c(2, 3)
+mse_results <- lapply(seeds, knn_analysis_with_seed)
+
+# Plot the results
+par(mfrow = c(1, 2))
+for (i in 1:length(seeds)) {
+  plot(k_values, mse_results[[i]], type = "b", col = "blue", pch = 19,
+       xlab = "Number of Neighbors (k)", ylab = "Validation MSE",
+       main = paste("Validation MSE vs. k (Seed =", seeds[i], ")"))
+}
+
+```
+Answer: 
+The validation MSE changes with different random seeds becuz each seed results in a diffrent random split of the data. This means that the estimation and validation sets are different, which effects how the kNN model is trained and evaluted. The differnces in data subsets lead to variations in model performance and validation MSE. This variablity is typical in machine learning and show the importance of using consistent data splits or multiple runs to assess model stablity.
+
+
+
+
+
+
+
+(c) Use the estimation/validation data from (a) with random seed (1) and ```rpart``` and ```rpart.plot```function to perform decision tree.
+
+* Start with default setting of R. 
+* Train decision tree models using cp=0, 0.001, 0.01, 0.1. 
+* Students may explore other tuning parameters as needed. 
+* Show your tree results using ```rpart.plot``` function.
+* Compute validation MSE versus different cp values. 
+* Choose cp with lowest validation MSE.
+```{r}
+cp_values <- c(0, 0.001, 0.01, 0.1)
+
+
+models <- list()
+validation_mse <- numeric(length(cp_values))
+
+# Train models with diff cp 
+for (i in 1:length(cp_values)) {
+  cp <- cp_values[i]
+  model <- rpart(medv ~ ., data = est.boston, control = rpart.control(cp = cp))
+  models[[i]] <- model
+  val_predictions <- predict(model, newdata = val.boston)
+  validation_mse[i] <- mean((val.boston$medv - val_predictions)^2)
+  
+  cat("cp =", cp, "- Validation MSE:", validation_mse[i], "\n")
+}
+
+# Plot 
+plot(cp_values, validation_mse, type = "b", col = "blue", pch = 19,
+     xlab = "Complexity Parameter (cp)", ylab = "Validation MSE",
+     main = "Validation MSE vs. cp")
+
+# Identify and print the best cp value 
+best_model_index <- which.min(validation_mse)
+best_cp <- cp_values[best_model_index]
+cat("The best cp value is", best_cp, "with the lowest validation MSE of", validation_mse[best_model_index], "\n")
+
+# Display the tree
+best_model <- models[[best_model_index]]
+rpart.plot(best_model)
+```
+(d) Repeat (c) with estimation/validation set with different random seeds, (2,3), and see if your answer changes. If so, why does it change?
+
+```{r}
+
+decision_tree_analysis_with_seed <- function(seed) {
+  set.seed(seed)
+  val.idx <- sample(1:nrow(trn.boston), 45)
+  val.boston <- trn.boston[val.idx, ]
+  est.boston <- trn.boston[-val.idx, ]
+  
+  validation_mse <- numeric(length(cp_values))
+  
+  for (i in 1:length(cp_values)) {
+    cp <- cp_values[i]
+    model <- rpart(medv ~ ., data = est.boston, control = rpart.control(cp = cp))
+    val_predictions <- predict(model, newdata = val.boston)
+    validation_mse[i] <- mean((val.boston$medv - val_predictions)^2)
+    
+    # Print the MSE for each cp 
+    cat("Seed =", seed, "cp =", cp, "- Validation MSE:", validation_mse[i], "\n")
+  }
+  
+  # Identify the best cp 
+  best_cp_index <- which.min(validation_mse)
+  best_cp <- cp_values[best_cp_index]
+  best_mse <- validation_mse[best_cp_index]
+  
+  cat("For seed =", seed, "the best cp value is", best_cp, "with the lowest validation MSE of", best_mse, "\n")
+  
+  return(validation_mse)
+}
+
+# Calculate val MSEs for diff seeds
+seeds <- c(2, 3)
+mse_results <- lapply(seeds, decision_tree_analysis_with_seed)
+
+# Plot the results
+par(mfrow = c(1, 2))
+for (i in 1:length(seeds)) {
+  plot(cp_values, mse_results[[i]], type = "b", col = "blue", pch = 19,
+       xlab = "Complexity Parameter (cp)", ylab = "Validation MSE",
+       main = paste("Validation MSE vs. cp (Seed =", seeds[i], ")"))
+}
+```
+
+In this ML methods such as the KNN the results changed because of having different testing data. As you can see even the best cp can be different for different random seed numbers as in 1 and 3 the best is cp=0.001 but in the random see =2 it has ben the cp=0. However, you can see the change between the cp=0.001 and cp = 0 is not a lot so it can change by changing the random seed.

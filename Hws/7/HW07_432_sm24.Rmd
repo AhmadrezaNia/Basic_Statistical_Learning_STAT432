@@ -1,0 +1,308 @@
+---
+title: "Stat 432 HW 07"
+author: "Name: Ahmadreza Eslamminia, netID: ae15"
+date: 'Summer 2024'
+output:
+  pdf_document
+---
+
+
+Include the R code for this HW. 
+
+
+```{r setup, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ISLR2)
+library(GGally)
+library(tibble)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(jpeg)
+library(ggplot2)
+library(scatterplot3d)
+
+#add more libraries as needed.
+```
+
+
+ 
+## Question 1 (K-means clustering)
+
+In this question, we will replicate the image pixels K-means clustering example in our lectures. Perform the following:
+
+(a) Choose a colored `.jpg` image by your own. The resolution should be at least $200 \times 200$ but no larger than $800 \times 800$. You may reduce the resolution of your image before loading it into R. Plot this image in R.
+
+```{r}
+
+img <- readJPEG("image.jpg")
+
+img_dim <- dim(img)
+par(mar=rep(0.2,4))
+plot(c(0, img_dim[2]), c(0, img_dim[1]), xaxt='n', yaxt='n', bty='n', pch='', xlab='', ylab='')
+rasterImage(img, 0, 0, img_dim[2], img_dim[1])
+```
+
+The image is token by myself :))
+
+(b) ``vectorize'' this image dataset by converting it to a matrix with dimension: Number of Pixels $\times$ 3, where $3$ represents the dimension of (RGB) colors.
+
+```{r}
+img_vectorized <- apply(img, 3, c)
+dim(img_vectorized)
+head(img_vectorized)
+```
+
+(c) Perform k-means with $k = 2, 5, 10, 30, 50, 100$ by treating the pixels as observations. For each $k$ setting, after obtaining the clusters, reconstruct a new image that replaces the pixel colors in each cluster by its cluster mean color. Plot these six new images. Use `par(mfrow = c(2, 3)` to organize your 6 new figures with two rows of three images per row. Label each figure with their corresponding $k$.
+
+```{r}
+perform_kmeans_and_plot <- function(img_vectorized, k, img_dim) {
+  kmeans_fit <- kmeans(img_vectorized, centers=k)
+  new_img_vectorized <- kmeans_fit$centers[kmeans_fit$cluster,]
+  
+  # Convert  back 
+  new_img <- array(0, dim=img_dim)
+  new_img[,,1] <- matrix(new_img_vectorized[,1], img_dim[1], img_dim[2])
+  new_img[,,2] <- matrix(new_img_vectorized[,2], img_dim[1], img_dim[2])
+  new_img[,,3] <- matrix(new_img_vectorized[,3], img_dim[1], img_dim[2])
+  
+  return(new_img)
+}
+
+k_values <- c(2, 5, 10, 30, 50, 100)
+
+
+par(mfrow=c(2, 3), mar=rep(0.2, 4))
+for (k in k_values) {
+  new_img <- perform_kmeans_and_plot(img_vectorized, k, img_dim)
+  plot(c(0, img_dim[2]), c(0, img_dim[1]), xaxt='n', yaxt='n', bty='n', pch='', xlab='', ylab='')
+  rasterImage(new_img, 0, 0, img_dim[2], img_dim[1])
+  title(main=paste("k =", k))
+}
+```
+
+\newpage
+## Question 2 (K-means clustering)
+
+In this problem, you will perform K-means clustering *manually*, with K=2, on a small example. The observations are as follows:
+
+```{r,echo=FALSE,fig.width=4}
+dt=data.frame(Obs=c(1:6),x1=c( 5 , 9,  8 , 4 , 4 ,10),x2=c(1,2,3,6,5,4),initial.cluster=c(1,1,2,2,2,2))
+
+
+dt %>% 
+  knitr::kable(
+    format="latex",
+    align="l"
+  ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+
+plot(dt$x1,dt$x2,xlab="x1",ylab="x2",asp=1)
+grid(nx = NULL, ny = NULL,
+     lty = 2,      # Grid line type
+     col = "gray", # Grid line color
+     lwd = 2) 
+```
+
+(a) Compute the centroid for the initial cluster.
+
+```{r}
+data <- data.frame(
+  Obs = 1:6,
+  x1 = c(5, 9, 8, 4, 4, 10),
+  x2 = c(1, 2, 3, 6, 5, 4),
+  initial.cluster = c(1, 1, 2, 2, 2, 2)
+)
+
+#  centroides
+centroid1 <- colMeans(data[data$initial.cluster == 1, 2:3])
+centroid2 <- colMeans(data[data$initial.cluster == 2, 2:3])
+
+centroid1
+centroid2
+```
+
+(b) Assign each observation to the centroid to which it is closest, in terms of Euclidean distance. Report the cluster labels for each observation.
+
+```{r}
+euclidean_distance <- function(a, b) {
+  sqrt(sum((a - b)^2))
+}
+
+# Assign 
+assign_clusters <- function(data, centroids) {
+  distances <- sapply(1:nrow(data), function(i) {
+    c(euclidean_distance(data[i, 2:3], centroids[[1]]),
+      euclidean_distance(data[i, 2:3], centroids[[2]]))
+  })
+  new_clusters <- apply(distances, 2, which.min)
+  return(new_clusters)
+}
+
+# Initial centroides
+centroids <- list(centroid1, centroid2)
+
+# Assign clusters
+data$cluster <- assign_clusters(data, centroids)
+
+data
+```
+
+(c) Repeat (a) and (b) until the answers obtained stop changing.
+
+```{r}
+converged <- FALSE
+
+while (!converged) {
+
+  new_centroid1 <- colMeans(data[data$cluster == 1, 2:3])
+  new_centroid2 <- colMeans(data[data$cluster == 2, 2:3])
+  
+  # Assign 
+  new_clusters <- assign_clusters(data, list(new_centroid1, new_centroid2))
+  
+  if (all(new_clusters == data$cluster)) {
+    converged <- TRUE
+  } else {
+    data$cluster <- new_clusters
+  }
+  
+  # Update 
+  centroids <- list(new_centroid1, new_centroid2)
+}
+
+data
+```
+
+(d) Plot the observations according to the cluster labels obtained. 
+
+```{r}
+
+library(ggplot2)
+
+ggplot(data, aes(x = x1, y = x2, color = as.factor(cluster))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c('red', 'blue')) +
+  labs(color = "Cluster") +
+  theme_minimal()
+```
+
+\newpage
+## Question 3 (Hierarchical clustering)
+
+In this problem, you will perform hierarchical clustering *manually* on a small example. The observations are as follows:
+
+```{r,echo=FALSE,fig.width=4,fig.pos = "H"}
+dt=data.frame(Obs=c(1:4),x1=c(1, 5 , 9,  8),x2=c(3,2,4,4))
+
+
+dt %>% 
+  knitr::kable(
+    format="latex",
+    align="l"
+  ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+
+plot(dt$x1,dt$x2,xlab="x1",ylab="x2",asp=1)
+grid(nx = NULL, ny = NULL,
+     lty = 2,      # Grid line type
+     col = "gray", # Grid line color
+     lwd = 2) 
+```
+
+(a) Conduct the hierarchical clustering based on  complete linkage. For each step of the hierarchical clustering, report the new fusion and the corresponding dissimilarity (distance).
+
+```{r}
+
+data <- data.frame(
+  Obs = 1:4,
+  x1 = c(1, 5, 9, 8),
+  x2 = c(3, 2, 4, 4)
+)
+
+# distance matrix
+dist_matrix <- dist(data[,2:3])
+
+
+hc_complete <- hclust(dist_matrix, method = "complete")
+
+cat("Complete linkages Fusions:\n")
+print(hc_complete$merge)
+cat("\nComplete Linkage Disimilarites:\n")
+print(hc_complete$height)
+
+# dendrograms
+plot(hc_complete, main = "Complete Linkage")
+```
+
+(b) Conduct the hierarchical clustering based on single linkage.  For each step of the hierarchical clustering, report the new fusion and the corresponding dissimilarity (distance).
+
+```{r}
+
+hc_single <- hclust(dist_matrix, method = "single")
+
+cat("Single Linkage Fusions:\n")
+print(hc_single$merge)
+cat("\nSingle Linkage Dissimilarities:\n")
+print(hc_single$height)
+
+plot(hc_single, main = "Single Linkage")
+```
+
+\newpage
+## Question 4 (PCA)
+
+(a) Generate a simulated data set with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables.
+
+```{r}
+set.seed(123)
+
+
+n <- 20
+p <- 50
+
+# Generate
+class1 <- matrix(rnorm(n * p, mean = 0), nrow = n, ncol = p)
+class2 <- matrix(rnorm(n * p, mean = 3), nrow = n, ncol = p)
+class3 <- matrix(rnorm(n * p, mean = 6), nrow = n, ncol = p)
+
+# Combine
+data <- rbind(class1, class2, class3)
+
+# class labeling
+labels <- factor(rep(1:3, each = n))
+
+
+head(data)
+```
+
+Hint: There are a number of functions in R that you can use to generate data. One example is the ```rnorm()``` function; ```runif()``` is another option. Be sure to add a mean shift to the observations in each class so that there are three distinct classes.
+
+(b) Perform PCA on the 60 observations and plot the first two principal component score vectors. Use a different color to indicate the observations in each of the three classes. 
+
+
+If the three classes do not appear separated in this plot, then return to part (a) and modify the simulation so that there is greater separation between the three classes. 
+```{r}
+
+pca_result <- prcomp(data, scale. = TRUE)
+
+
+pca_data <- data.frame(pca_result$x, class = labels)
+
+
+ggplot(pca_data, aes(x = PC1, y = PC2, color = class)) +
+  geom_point(size = 3) +
+  labs(title = "PCA of Simulated Data", x = "PC1", y = "PC2") +
+  theme_minimal()
+
+```
+
+```
